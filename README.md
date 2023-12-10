@@ -1,6 +1,6 @@
 # SACRW
 
-This repository contains the official implementation of the NeurIPA 2023 paper: 
+This repository contains the official implementation of the NeurIPS 2023 paper: 
 
 [Object-centric Learning with Cyclic Walks between Parts and Whole](https://arxiv.org/pdf/2302.08023.pdf)
 
