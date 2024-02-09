@@ -260,7 +260,7 @@ class VisionTransformer(nn.Module):
         x = self.prepare_tokens(x)
         for blk in self.blocks:
             x = blk(x)
-        x = self.norm(x)
+        #x = self.norm(x)
         return x
 
     def get_intermediate_feat(self, x, n=1):

@@ -1,13 +1,15 @@
 export CUDA_VISIBLE_DEVICES=$1
-python test.py \
+python train.py \
 --model_name sacrw \
---dataset voc \
+--dataset movi \
 --task od \
 --monitor avg_ari_fg \
 --batch_size 128 \
---num_slots 4 \
---seed 42 \
+--split_name "E" \
+--num_slots 11 \
+--seed 88 \
 --slot_size 384 \
 --mlp_hidden_size 384 \
---alpha 1 \
---beta 100
+--alpha 0 \
+--beta 100 \
+--additional_position True

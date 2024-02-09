@@ -8,13 +8,15 @@ from torch.optim import Adam
 from torch.nn.utils import clip_grad_norm_
 from torch.cuda import amp
 from torch.cuda.amp import autocast as autocast
-from modules.utils import cosine_anneal, lr_scheduler_warm, lr_scheduler_no_warm, average_ari, iou_and_dice, average_segcover, miou, clustering, get_parameter_number
+from modules.utils import cosine_anneal, lr_scheduler_warm, lr_scheduler_no_warm, average_ari, iou_and_dice, average_segcover, miou, get_parameter_number
 
 from data.birds_dataset import BirdsDataModule
 from data.dogs_dataset import DogsDataModule
 from data.cars_dataset import CarsDataModule
 from data.flowers_dataset import FlowersDataModule
 from data.voc_dataset import VOCDataModule
+from data.coco_dataset import CocoDataModule
+from data.movi_dataset import MOVIDataModule
 
 from models.sacrw import SACRW
 import warnings
@@ -26,6 +28,8 @@ data_paths = {
     'cars': '/home/ziyu/Datasets/Cars',
     'flowers': '/home/ziyu/Datasets/Flowers',
     'voc': '/home/ziyu/Datasets/PascalVOC',
+    'coco': '/home/ziyu/Datasets/mscoco',
+    'movi': '/home/ziyu/Datasets/MOVI',
 }
 
 dataset_factory = {
@@ -34,6 +38,8 @@ dataset_factory = {
     'cars': CarsDataModule,
     'flowers': FlowersDataModule,
     'voc': VOCDataModule,
+    'coco': CocoDataModule,
+    'movi': MOVIDataModule,
 }
 
 model_factory = {
@@ -57,12 +63,16 @@ def parse_args():
     parser.add_argument('--warmup_steps', type=int, default=5000)
     parser.add_argument('--decay_steps', type=int, default=50000)
     parser.add_argument('--model_name', default='sacrw', help="sacrw")
+    parser.add_argument('--split_name', type=str, default='C')
+    parser.add_argument('--additional_position', type=bool, default=False)
 
 
     # Evaluation
     parser.add_argument('--task', type=str, default='od', help='od (object discovery) | fe (foreground extraction) | ss (semantic segmentation)')
     parser.add_argument('--evaluate_interval', type=int, default=1)
-    parser.add_argument('--monitor', type=str, default='avg_ari_fg', help='avg_ari_fg or avg_iou')
+    parser.add_argument('--monitor', type=str, default='avg_ari_fg', help='avg_ari_fg | avg_iou | mIoU')
+    parser.add_argument('--n_clusters', type=int, default=21)
+    parser.add_argument('--n_classes', type=int, default=21)
 
     # Backbone ViT
     parser.add_argument('--vit_arch', type=str, default='vit_small')
@@ -179,7 +189,6 @@ def run(args):
                     for k, v in val_results_list.items():
                         if len(v) > 0:
                             val_results['avg_' + k] = torch.stack(v).mean()
-
                 log_dir = os.path.join(args.log_dir, args.model_name, args.dataset)
                 if not os.path.exists(log_dir):
                     os.makedirs(log_dir)

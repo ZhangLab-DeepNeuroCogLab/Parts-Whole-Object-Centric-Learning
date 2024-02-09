@@ -47,9 +47,8 @@ class VOCDataModule(pl.LightningDataModule):
                                          Resize(320, interpolation=torchvision.transforms.InterpolationMode.NEAREST),
                                          ToTensor(),
                                          ])
-        self.voc_train = VOCDataset(root=self.root, image_set='trainaug', transforms=train_image_transforms,
-                                    return_masks=self.return_masks)
-        self.voc_val = VOCDataset(root=self.root, image_set='val', transform=val_image_transforms,
+        self.voc_train = VOCDataset(root=self.root, image_set='trainaug', train_transform=train_image_transforms)
+        self.voc_val = VOCDataset(root=self.root, image_set='val', val_transform=val_image_transforms,
                                   target_transform=val_target_transforms)
 
     def __len__(self):
@@ -63,8 +62,7 @@ class VOCDataModule(pl.LightningDataModule):
         print(f"Val size {len(self.voc_val)}")
 
     def train_dataloader(self):
-        return DataLoader(self.voc_train, batch_size=self.batch_size,
-                          shuffle=self.shuffle, num_workers=self.num_workers,
+        return DataLoader(self.voc_train, batch_size=self.batch_size, shuffle=self.shuffle, num_workers=self.num_workers,
                           drop_last=self.drop_last, pin_memory=True)
 
     def val_dataloader(self):
@@ -107,13 +105,15 @@ class VOCDataset(VisionDataset):
             self,
             root: str,
             image_set: str = "trainaug",
-            transform: Optional[Callable] = None,
-            target_transform: Optional[Callable] = None,
-            transforms: Optional[Callable] = None,
-            return_masks: bool = False
+            train_transform: Optional[Callable] = None,
+            val_transform: Optional[Callable] = None,
+            target_transform: Optional[Callable] = None
     ):
-        super(VOCDataset, self).__init__(root, transforms, transform, target_transform)
+        super(VOCDataset, self).__init__(root, train_transform, val_transform, target_transform)
         self.image_set = image_set
+        self.train_transform = train_transform
+        self.val_transform = val_transform
+        self.target_transform = target_transform
         if self.image_set == "trainaug" or self.image_set == "train":
             seg_folder = "SegmentationClassAug"
         elif self.image_set == "val":
@@ -132,7 +132,6 @@ class VOCDataset(VisionDataset):
 
         self.images = [os.path.join(image_dir, x + ".jpg") for x in file_names]
         self.masks = [os.path.join(seg_dir, x + ".png") for x in file_names]
-        self.return_masks = return_masks
 
         assert all([Path(f).is_file() for f in self.masks]) and all([Path(f).is_file() for f in self.images])
 
@@ -140,33 +139,23 @@ class VOCDataset(VisionDataset):
         img = Image.open(self.images[index]).convert('RGB')
         if self.image_set == "val":
             mask = Image.open(self.masks[index])
-            if self.transforms:
-                img, mask = self.transforms(img, mask)
-                mask = (mask * 255).int()
+            if self.val_transform is not None:
+                img = self.val_transform(img)
+            if self.target_transform is not None:
+                mask = self.target_transform(mask)
+            mask = (mask * 255).int()
             return {
                 'image': img,
                 'mask': mask,
             }
         elif "train" in self.image_set:
-            if self.transforms:
-                if self.return_masks:
-                    mask = Image.open(self.masks[index])
-                    res = self.transforms(img, mask)
-                    img = res[0]
-                    mask = (res[1] * 255).int()
-                    return {
-                        'image': img,
-                        'mask': mask,
-                    }
-                else:
-                    res = self.transforms(img)
-                    img = res
-                    return {
-                        'image': img
-                    }
+            if self.train_transform is not None:
+                img = self.train_transform(img)
             return {
                 'image': img
             }
+        else:
+            raise NotImplementedError
 
     def __len__(self) -> int:
         return len(self.images)

@@ -1,6 +1,6 @@
 # SACRW
 
-This repository contains the official implementation of the NeurIPS 2023 paper: 
+This repository contains the official implementation of the NeurIPA 2023 paper: 
 
 [Object-centric Learning with Cyclic Walks between Parts and Whole](https://arxiv.org/pdf/2302.08023.pdf)
 
@@ -19,17 +19,14 @@ Other dependencies can be installed as needed.
 
 ## Dataset
 
-We provide backup on Google drive for the following datasets:
+For PascalVOC 2012 and COCO 2017, download the datasets from the following links:
 
-- PascalVOC 2012
-- COCO 2017
-- MOVi-C
-- MOVi-E
-- Birds
-- Dogs
-- Cars
-- Flowers
+- [PascalVOC 2012](http://host.robots.ox.ac.uk/pascal/VOC/voc2012/index.html#devkit)
+- [COCO 2017](https://cocodataset.org/#download)
 
+For MOVi-C and MOVi-E, please follow this [repository](https://github.com/Interpause/MOVi-PyTorch).
+
+For Birds, Dogs, Cars, and Flowers, please follow this [repository](https://github.com/YuLiu-LY/BO-QSA).
 ## Training & Testing
 To train the model from scratch, please follow the steps below:
 - Modify the ``data_paths`` in ``train.py`` to your own.

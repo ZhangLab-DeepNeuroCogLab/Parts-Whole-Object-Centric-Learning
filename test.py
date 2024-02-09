@@ -15,6 +15,8 @@ from data.dogs_dataset import DogsDataModule
 from data.cars_dataset import CarsDataModule
 from data.flowers_dataset import FlowersDataModule
 from data.voc_dataset import VOCDataModule
+from data.coco_dataset import CocoDataModule
+from data.movi_dataset import MOVIDataModule
 from models.sacrw import SACRW
 import warnings
 warnings.filterwarnings("ignore")
@@ -24,7 +26,9 @@ data_paths = {
     'dogs': '/home/ziyu/Datasets/Dogs',
     'cars': '/home/ziyu/Datasets/Cars',
     'flowers': '/home/ziyu/Datasets/Flowers',
-    'voc': '/home/ziyu/Datasets/PascalVOC'
+    'voc': '/home/ziyu/Datasets/PascalVOC',
+    'coco': '/home/ziyu/Datasets/mscoco',
+    'movi': '/home/ziyu/Datasets/MOVI',
 }
 
 dataset_factory = {
@@ -32,7 +36,9 @@ dataset_factory = {
     'dogs': DogsDataModule,
     'cars': CarsDataModule,
     'flowers': FlowersDataModule,
-    'voc': VOCDataModule
+    'voc': VOCDataModule,
+    'coco': CocoDataModule,
+    'movi': MOVIDataModule,
 }
 
 model_factory = {

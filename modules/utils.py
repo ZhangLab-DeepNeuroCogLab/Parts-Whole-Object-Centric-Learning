@@ -4,12 +4,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from sklearn.metrics import adjusted_rand_score
-import math
-from joblib import Parallel
-from joblib.parallel import delayed
+from sklearn.decomposition import PCA
+from sklearn.cluster import MiniBatchKMeans
 from scipy.optimize import linear_sum_assignment
-from kmeans_pytorch import kmeans
+from joblib import Parallel, delayed
+import math
 
+N_JOBS = 16 # set to number of threads
 Tensor = TypeVar("Tensor")
 T = TypeVar("T")
 TK = TypeVar("TK")
@@ -23,19 +24,6 @@ def build_grid(resolution):
     grid = torch.meshgrid(*ranges, indexing='ij')
     grid = torch.stack(grid, dim=-1)
     grid = torch.reshape(grid, [resolution[0], resolution[1], -1])
-    grid = grid.unsqueeze(0)
-    return torch.cat([grid, 1.0 - grid], dim=-1)
-
-def build_grid_3d(resolution):
-    x, y, z = resolution
-    x = torch.linspace(0.0, 1.0, steps=x)
-    y = torch.linspace(0.0, 1.0, steps=y)
-    z = torch.linspace(0.0, 1.0, steps=z)
-    lenx, leny, lenz = x.size(0), y.size(0), z.size(0)
-    x = x.unsqueeze(1).unsqueeze(2).repeat(1, leny, lenz)
-    y = y.unsqueeze(0).unsqueeze(2).repeat(lenx, 1, lenz)
-    z = z.unsqueeze(0).unsqueeze(1).repeat(lenx, leny, 1)
-    grid = torch.stack([x, y, z], dim=-1)
     grid = grid.unsqueeze(0)
     return torch.cat([grid, 1.0 - grid], dim=-1)
 
@@ -327,105 +315,6 @@ def average_segcover(segA, segB, ignore_background=False):
 
 def rescale(x: Tensor) -> Tensor:
     return x * 2 - 1
-
-def miou(masks, masks_gt, num_clusters, num_classes):
-    # masks (B, 1, H, W)
-    # masks_gt (B, 1, H, W)
-    B, _, H, W = masks.size()
-    tp = [0] * num_classes
-    fp = [0] * num_classes
-    fn = [0] * num_classes
-    jac = [0] * num_classes
-    all_preds = np.zeros(B * H * W, dtype=np.float32)
-    all_gt = np.zeros(B * H * W, dtype=np.float32)
-    offset_ = 0
-    for i in range(B):
-        mask = masks[i].squeeze(0).cpu().numpy()
-        target = masks_gt[i].squeeze(0).cpu().numpy()
-        valid = (target != 255)
-        n_valid = np.sum(valid)
-        all_gt[offset_:offset_ + n_valid] = target[valid]
-        all_preds[offset_:offset_ + n_valid, ] = mask[valid]
-        all_gt[offset_:offset_ + n_valid, ] = target[valid]
-        offset_ += n_valid
-    all_preds = all_preds[:offset_, ]
-    all_gt = all_gt[:offset_, ]
-    num_elems = offset_
-    if num_clusters == num_classes:
-        print('Using hungarian algorithm for matching')
-        match = hungarian_match(all_preds, all_gt, preds_k=num_clusters, targets_k=num_classes, metric='iou')
-    else:
-        print('Using majority voting for matching')
-        match = majority_vote(all_preds, all_gt, preds_k=num_clusters, targets_k=num_classes)
-
-    reordered_preds = np.zeros(num_elems, dtype=all_preds.dtype)
-    for pred_i, target_i in match:
-        reordered_preds[all_preds == int(pred_i)] = int(target_i)
-    for i_part in range(0, num_classes):
-        tmp_all_gt = (all_gt == i_part)
-        tmp_pred = (reordered_preds == i_part)
-        tp[i_part] += np.sum(tmp_all_gt & tmp_pred)
-        fp[i_part] += np.sum(~tmp_all_gt & tmp_pred)
-        fn[i_part] += np.sum(tmp_all_gt & ~tmp_pred)
-    for i_part in range(0, num_classes):
-        jac[i_part] = float(tp[i_part]) / max(float(tp[i_part] + fp[i_part] + fn[i_part]), 1e-8)
-    mean_iou = np.mean(jac)
-    return mean_iou
-
-def hungarian_match(flat_preds, flat_targets, preds_k, targets_k, metric='acc', n_jobs=16):
-    assert (preds_k == targets_k)  # one to one
-    num_k = preds_k
-
-    # perform hungarian matching
-    print('Using iou as metric')
-    results = Parallel(n_jobs=n_jobs, backend='multiprocessing')(delayed(get_iou)(
-        flat_preds, flat_targets, c1, c2) for c2 in range(num_k) for c1 in range(num_k))
-    results = np.array(results)
-    results = results.reshape((num_k, num_k)).T
-    match = linear_sum_assignment(flat_targets.shape[0] - results)
-    match = np.array(list(zip(*match)))
-    res = []
-    for out_c, gt_c in match:
-        res.append((out_c, gt_c))
-
-    return res
-
-
-def majority_vote(flat_preds, flat_targets, preds_k, targets_k, n_jobs=16):
-    iou_mat = Parallel(n_jobs=n_jobs, backend='multiprocessing')(delayed(get_iou)(
-        flat_preds, flat_targets, c1, c2) for c2 in range(targets_k) for c1 in range(preds_k))
-    iou_mat = np.array(iou_mat)
-    results = iou_mat.reshape((targets_k, preds_k)).T
-    results = np.argmax(results, axis=1)
-    match = np.array(list(zip(range(preds_k), results)))
-    return match
-
-
-def get_iou(flat_preds, flat_targets, c1, c2):
-    tp = 0
-    fn = 0
-    fp = 0
-    tmp_all_gt = (flat_preds == c1)
-    tmp_pred = (flat_targets == c2)
-    tp += np.sum(tmp_all_gt & tmp_pred)
-    fp += np.sum(~tmp_all_gt & tmp_pred)
-    fn += np.sum(tmp_all_gt & ~tmp_pred)
-    jac = float(tp) / max(float(tp + fp + fn), 1e-8)
-    return jac
-
-def clustering(masks, region_vectors, num_clusters):
-    # masks(B, 1, H, W)
-    # region_vectors (B, num_slots, c)
-    masks = masks.squeeze(1)
-    B, num_slots, c = region_vectors.size()
-    vectors = region_vectors.reshape(-1, c)
-    cluster_ids_x, cluster_centers = kmeans(X=vectors, num_clusters=num_clusters, distance='cosine', device=vectors.get_device())
-    cluster_ids_x = cluster_ids_x.reshape(B, num_slots).cuda()
-    masks_kmeans = torch.zeros_like(masks)
-    for i in range(B):
-        for j in range(num_slots):
-            masks_kmeans[i][masks[i] == j] = cluster_ids_x[i][j]
-    return masks_kmeans.unsqueeze(1)
 
 def color_map(N=256, normalized=False):
     def bitget(byteval, idx):
